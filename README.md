@@ -1,51 +1,299 @@
 <!---
 {
+  "id": "f09fc4fb-82e5-42a9-837f-9e73c2d2c890",
   "depends_on": [],
   "author": "Stephan Bökelmann",
-  "first_used": "2025-03-17",
-  "keywords": ["learning", "exercises", "education", "practice"]
+  "first_used": "2025-06-23",
+  "keywords": ["redis", "cpp", "rediscpp", "CMake FetchContent", "streams", "pubsub"]
 }
 --->
 
-# Learning Through Exercises
+# Working with Redis in C++ using **redis-cpp**
+
+> In this exercise you will learn how to use the **redis-cpp** header-only library to interact with Redis for counting keys, consuming streams, and using publish/subscribe patterns. Furthermore we will explore integrating the library via CMake’s FetchContent, handling asynchronous data, and designing small, robust clients.
 
 ## Introduction
-Learning by doing is one of the most effective methods to acquire new knowledge and skills. Rather than passively consuming information, actively engaging in problem-solving fosters deeper understanding and long-term retention. By working through structured exercises, students can grasp complex concepts in a more intuitive and applicable way. This approach is particularly beneficial in technical fields like programming, mathematics, and engineering.
+
+This exercise sheet guides you through three common Redis patterns using the **redis-cpp** C++17 header-only client. You already know the basics of Redis and how to use CMake’s FetchContent to pull in dependencies; here you’ll see how to wire everything together, write a loop that atomically increments a counter, consume a Redis Stream as events arrive, and build a simple publish/subscribe client.
+
+At its core, **redis-cpp** offers:
+
+* **`make_stream(host, port)`**: Establishes a TCP connection to the Redis server and returns a `std::shared_ptr<rediscpp::Stream>`.
+* **`execute(stream, args...)`**: Sends a Redis command and returns a `rediscpp::Response` that you convert to your desired type via `.as<T>()` or inspect with helper methods (e.g., `is_null()`, `as_array()`).
+* **Blocking and non-blocking operations**: Commands like `XREAD BLOCK` or `SUBSCRIBE` utilize blocking reads on the underlying socket in a straightforward manner.
+
+Each task below pairs a CMake configuration with C++ code. Before each code listing, you’ll find detailed comments explaining each line.
 
 ### Further Readings and Other Sources
-- [The Importance of Practice in Learning](https://www.sciencedirect.com/science/article/pii/S036013151300062X)
-- "The Art of Learning" by Josh Waitzkin
-- [How to Learn Effectively: 5 Key Strategies](https://www.edutopia.org/article/5-research-backed-learning-strategies)
+
+1. **redis-cpp GitHub repository** (examples & API):
+   [https://github.com/tdv/redis-cpp](https://github.com/tdv/redis-cpp)
+2. **Redis Streams documentation**:
+   [https://redis.io/topics/streams](https://redis.io/topics/streams)
+3. **Redis Publish/Subscribe**:
+   [https://redis.io/topics/pubsub](https://redis.io/topics/pubsub)
+4. **CMake FetchContent module**:
+   [https://cmake.org/cmake/help/latest/module/FetchContent.html](https://cmake.org/cmake/help/latest/module/FetchContent.html)
+5. **Official Redis Introduction**:
+   [https://redis.io/topics/introduction](https://redis.io/topics/introduction)
+
+---
 
 ## Tasks
-1. **Write a Summary**: Summarize the concept of "learning by doing" in 3-5 sentences.
-2. **Example Identification**: List three examples from your own experience where learning through exercises helped you understand a topic better.
-3. **Create an Exercise**: Design a simple exercise for a topic of your choice that someone else could use to practice.
-4. **Follow an Exercise**: Find an online tutorial that includes exercises and complete at least two of them.
-5. **Modify an Existing Exercise**: Take a basic problem from a textbook or online course and modify it to make it slightly more challenging.
-6. **Pair Learning**: Explain a concept to a partner and guide them through an exercise without giving direct answers.
-7. **Review Mistakes**: Look at an exercise you've previously completed incorrectly. Identify why the mistake happened and how to prevent it in the future.
-8. **Time Challenge**: Set a timer for 10 minutes and try to solve as many simple exercises as possible on a given topic.
-9. **Self-Assessment**: Create a checklist to evaluate your own performance in completing exercises effectively.
-10. **Reflect on Progress**: Write a short paragraph on how this structured approach to exercises has influenced your learning.
 
-<details>
-  <summary>Tip for Task 5</summary>
-  Try making small adjustments first, such as increasing the difficulty slightly or adding an extra constraint.
-</details>
+### Task 1: Auto-increment a Key Every Second
 
-## Questions
-1. What are the main benefits of learning through exercises compared to passive learning?
-2. How do exercises improve long-term retention?
-3. Can you think of a subject where learning through exercises might be less effective? Why?
-4. What role does feedback play in learning through exercises?
-5. How can self-designed exercises improve understanding?
-6. Why is it beneficial to review past mistakes in exercises?
-7. How does explaining a concept to someone else reinforce your own understanding?
-8. What strategies can you use to stay motivated when practicing with exercises?
-9. How can timed challenges contribute to learning efficiency?
-10. How do exercises help bridge the gap between theory and practical application?
+**Goal:** Use C++ to increment a Redis key (`counter`) every second, then verify the value externally with `redis-cli`.
+
+1. **CMake Configuration**
+
+   ```cmake
+   cmake_minimum_required(VERSION 3.14)
+   project(MeinRedisProjekt LANGUAGES CXX)
+
+   # 1. Load FetchContent to pull in external projects
+   include(FetchContent)
+
+   # 2. Declare the redis-cpp dependency (header-only)
+   FetchContent_Declare(
+     rediscpp
+     GIT_REPOSITORY https://github.com/tdv/redis-cpp.git
+     GIT_TAG        master
+   )
+
+   # 3. Fetch & make available the library target 'rediscpp'
+   FetchContent_MakeAvailable(rediscpp)
+
+   # 4. Link to threading library for sleep operations
+   find_package(Threads REQUIRED)
+
+   # 5. Define executable for Task 1
+   add_executable(increment increment.cpp)
+   target_link_libraries(increment
+     PRIVATE
+       rediscpp        # The Redis C++ client
+       Threads::Threads  # For std::this_thread::sleep
+   )
+   ```
+
+   * **Steps 1–3** handle pulling in **redis-cpp**, making it a valid target.
+   * **Step 4** ensures you can use `<thread>` for timing loops.
+   * **Step 5** creates the `increment` binary and links necessary targets.
+
+2. **`increment.cpp` Explanation**
+
+   ```cpp
+   // Include timing and I/O utilities
+   #include <chrono>    // std::chrono::seconds
+   #include <iostream>  // std::cout, std::cerr
+   #include <thread>    // std::this_thread::sleep_for
+
+   // Enable header-only mode (no separate library)
+   #define REDISCPP_HEADER_ONLY
+   // Core redis-cpp headers
+   #include <redis-cpp/stream.h>   // rediscpp::make_stream
+   #include <redis-cpp/execute.h>  // rediscpp::execute
+
+   int main() {
+       try {
+           // 1. Connect to Redis at localhost:6379
+           auto stream = rediscpp::make_stream("localhost", "6379");
+
+           // 2. Loop indefinitely
+           while (true) {
+               // 3. Send INCR command for key "counter"
+               auto resp = rediscpp::execute(*stream, "INCR", "counter");
+               // 4. Convert response to integer and print
+               std::cout << "New counter value: "
+                         << resp.as<long long>() << std::endl;
+
+               // 5. Wait for 1 second before next increment
+               std::this_thread::sleep_for(std::chrono::seconds(1));
+           }
+       } catch (const std::exception &e) {
+           // Error handling: e.what() holds the error message
+           std::cerr << "Error: " << e.what() << std::endl;
+           return EXIT_FAILURE;
+       }
+       return EXIT_SUCCESS;
+   }
+   ```
+
+   * **Line 1–3**: Include standard headers for timing and I/O.
+   * **Macro `REDISCPP_HEADER_ONLY`**: Instructs **redis-cpp** to compile purely from headers without external linking.
+   * **`make_stream`**: Opens a TCP connection; throws on failure.
+   * **`execute(*stream, ...)`**: Issues a Redis command. Here `INCR counter` atomically increments by 1.
+   * **`resp.as<long long>()`**: Extracts the new integer value.
+   * **Error block**: Catches socket errors or protocol issues, printing details.
+
+3. **Compile & Run**
+
+   ```bash
+   cmake -B ./build       # Configure with our CMakeLists.txt
+   camke --build ./build  # Build the 'increment' binary
+   ./build/increment      # Starts printing counter values each second
+   ```
+
+4. **External Verification**
+   In a separate shell:
+
+   ```bash
+   redis-cli GET counter  # Should match the latest printed value
+   ```
+
+---
+
+### Task 2: Consuming a Redis Stream in C++
+
+**Goal:** Read events from a Redis Stream (`event_stream`) in real time and decode field/value pairs.
+
+1. **Stream Setup**
+
+   ```bash
+   redis-cli XADD event_stream * message "startup"
+   ```
+
+   * **`XADD event_stream * ...`**: Creates `event_stream` if absent and appends one entry with auto-generated ID.
+
+2. **`stream_consumer.cpp` Explanation**
+
+   ```cpp
+   #include <iostream>  // std::cout, std::cerr
+   #include <string>    // std::string
+
+   #define REDISCPP_HEADER_ONLY
+   #include <redis-cpp/stream.h>
+   #include <redis-cpp/execute.h>
+
+   int main() {
+       try {
+           // 1. Connect to Redis
+           auto stream = rediscpp::make_stream("localhost", "6379");
+           std::string last_id = "0";  // Start at the beginning
+
+           while (true) {
+               // 2. BLOCK for up to 5 seconds for new records after last_id
+               auto resp = rediscpp::execute(*stream,
+                   "XREAD", "BLOCK", "5000", "STREAMS",
+                   "event_stream", last_id);
+
+               // 3. If no new data, resp.is_null() == true
+               if (!resp.is_null()) {
+                   // 4. resp.as_array(): [ [stream_name, entries_array] ]
+                   auto outer = resp.as_array();
+                   for (auto &stream_block : outer) {
+                       // 5. Extract the entries list
+                       auto entries = stream_block.as_array()[1].as_array();
+
+                       for (auto &entry : entries) {
+                           // 6. entry: [id, [field1, val1, ...]]
+                           auto rec = entry.as_array();
+                           last_id = rec[0].as_string();
+
+                           // 7. Decode key/value pairs
+                           auto kvs = rec[1].as_array();
+                           std::cout << "Received ID=" << last_id << ", ";
+                           for (size_t i = 0; i < kvs.size(); i += 2) {
+                               std::cout << kvs[i].as_string()
+                                         << "=" << kvs[i+1].as_string() << " ";
+                           }
+                           std::cout << std::endl;
+                       }
+                   }
+               }
+           }
+       } catch (const std::exception &e) {
+           std::cerr << "Error: " << e.what() << std::endl;
+           return EXIT_FAILURE;
+       }
+       return EXIT_SUCCESS;
+   }
+   ```
+
+   * **`last_id`**: Tracks the most recent entry ID to avoid re-reading old events.
+   * **`XREAD BLOCK 5000 STREAMS event_stream last_id`**: Waits up to 5000 ms for new data after `last_id`.
+   * **Parsing**: The Redis reply is a nested array; you iterate to decode each record’s ID and fields.
+
+3. **Compile & Run**
+
+   ```bash
+   cmake -B ./build       
+   camke --build ./build  
+   ./build/stream_consumer
+   ```
+
+4. **Produce Events**
+
+   ```bash
+   redis-cli XADD event_stream * message "Hello" user "alice"
+   ```
+
+   Each event appears in your consumer’s stdout.
+
+---
+
+### Task 3: Publish/Subscribe with C++
+
+**Goal:** Implement a subscriber that listens on `notify_channel` and prints incoming messages, using blocking reads.
+
+1. **`pubsub.cpp` Explanation**
+
+   ```cpp
+   #include <iostream>  // std::cout, std::cerr
+
+   #define REDISCPP_HEADER_ONLY
+   #include <redis-cpp/stream.h>
+   #include <redis-cpp/execute.h>
+
+   int main() {
+       try {
+           // 1. Connect to Redis
+           auto stream = rediscpp::make_stream("localhost", "6379");
+
+           // 2. Subscribe command returns an array confirming the subscription
+           rediscpp::execute(*stream, "SUBSCRIBE", "notify_channel");
+           std::cout << "Subscribed to notify_channel. Waiting..." << std::endl;
+
+           // 3. Loop forever reading message frames
+           while (true) {
+               // 4. read_frame() blocks until a new Pub/Sub message arrives
+               auto frame = stream->read_frame();
+               auto arr = frame.as_array();
+
+               // 5. arr = ["message", channel, payload]
+               std::cout << "[" << arr[1].as_string() << "] "
+                         << arr[2].as_string() << std::endl;
+           }
+       } catch (const std::exception &e) {
+           std::cerr << "Error: " << e.what() << std::endl;
+           return EXIT_FAILURE;
+       }
+       return EXIT_SUCCESS;
+   }
+   ```
+
+   * **`SUBSCRIBE`**: Puts the connection into Pub/Sub mode; subsequent calls to `execute` won’t work until you unsubscribe.
+   * **`read_frame()`**: Low-level function that fetches the next array frame, blocking until content arrives.
+   * **Frame format**: `"message"`, channel name, message payload.
+
+2. **Compile & Run**
+
+   ```bash
+   cmake -B ./build       
+   camke --build ./build  
+   ./build/pubsub
+   ```
+
+3. **Publish test messages**
+
+   ```bash
+   redis-cli PUBLISH notify_channel "System update at $(date)"
+   ```
+
+   Subscriber prints each published payload.
+
+---
 
 ## Advice
-Practice consistently and seek out diverse exercises that challenge different aspects of a topic. Combine exercises with reflection and feedback to maximize your learning efficiency. Don't hesitate to adapt exercises to fit your own needs and ensure that you're actively engaging with the material, rather than just going through the motions.
 
+Working directly with Redis in C++ can feel low-level at first, but by encapsulating each pattern—key-value operations, streams, pub/sub—in its own small application you’ll quickly build muscle memory for the `redis-cpp` API. Notice how the same `make_stream` + `execute` pattern applies across tasks, with only command arguments changing. In production, factor repeated code into utility functions (e.g., `connect()`, `incr_loop()`, `stream_reader()`), and consider asynchronous I/O or thread pools for blocking operations. Keep your CMake setup minimal—once FetchContent brings in **redis-cpp**, you only manage targets and linking. When you expand to pipelines or clustering, revisit this sheet’s structure and adapt the loops into reusable modules. If you enjoyed this exercise, try implementing a rate limiter with Lua scripting or explore Redis Streams consumer groups in another sheet (see [Exercise Sheet: Redis Consumer Groups](https://github.com/STEMgraph/missing)). Good luck and happy coding!
