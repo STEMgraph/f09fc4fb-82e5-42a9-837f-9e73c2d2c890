@@ -40,6 +40,22 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
 ---
 
 ## Tasks
+### Task 0: Ensure that Redis is installed
+
+Make sure you have installed a Redis version newer than 5.0.
+Verify this by running:
+
+```sh
+redis-server --version
+```
+
+If Redis is not yet installed, set up the default installation of Redis using your package manager:
+
+```sh
+sudo apt update
+sudo apt install redis -y
+```
+
 
 ### Task 1: Auto-increment a Key Every Second
 
@@ -49,7 +65,7 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
 
    ```cmake
    cmake_minimum_required(VERSION 3.14)
-   project(MeinRedisProjekt LANGUAGES CXX)
+   project(MyRedisProject LANGUAGES CXX)
 
    # 1. Load FetchContent to pull in external projects
    include(FetchContent)
@@ -154,7 +170,7 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
 1. **Stream Setup**
 
    ```bash
-   redis-cli XADD event_stream * message "startup"
+   redis-cli XADD event_stream '*' message "startup"
    ```
 
    * **`XADD event_stream * ...`**: Creates `event_stream` if absent and appends one entry with auto-generated ID.
@@ -220,7 +236,10 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
 
 3. **Compile & Run**
 
+Make sure, to update the filename in your `CMakeLists.txt`-file, then run:
+
    ```bash
+   rm -rf ./build
    cmake -B ./build       
    camke --build ./build  
    ./build/stream_consumer
@@ -229,7 +248,7 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
 4. **Produce Events**
 
    ```bash
-   redis-cli XADD event_stream * message "Hello" user "alice"
+   redis-cli XADD event_stream '*' message "Hello" user "alice"
    ```
 
    Each event appears in your consumer’s stdout.
@@ -281,8 +300,10 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
    * **Frame format**: `"message"`, channel name, message payload.
 
 2. **Compile & Run**
+Adjust the filename within `CMakeLists.txt` again. 
 
    ```bash
+   rm -rf ./build
    cmake -B ./build       
    camke --build ./build  
    ./build/pubsub
