@@ -19,7 +19,7 @@ This exercise sheet guides you through three common Redis patterns using the **r
 At its core, **redis-cpp** offers:
 
 * **`make_stream(host, port)`**: Establishes a TCP connection to the Redis server and returns a `std::shared_ptr<rediscpp::Stream>`.
-* **`execute(stream, args...)`**: Sends a Redis command and returns a `rediscpp::Response` that you convert to your desired type via `.as<T>()` or inspect with helper methods (e.g., `is_null()`, `as_array()`).
+* **`execute(stream, args...)`**: Sends a Redis command and returns a `rediscpp::Response` that you convert to your desired type via `.as<T>()` or inspect with helper methods (e.g. `as_array()`).
 * **Blocking and non-blocking operations**: Commands like `XREAD BLOCK` or `SUBSCRIBE` utilize blocking reads on the underlying socket in a straightforward manner.
 
 Each task below pairs a CMake configuration with C++ code. Before each code listing, you’ll find detailed comments explaining each line.
@@ -197,8 +197,8 @@ sudo apt install redis -y
                    "XREAD", "BLOCK", "5000", "STREAMS",
                    "event_stream", last_id);
 
-               // 3. If no new data, resp.is_null() == true
-               if (!resp.is_null()) {
+               // 3. If no new data, resp == nullptr
+               if (resp != nullptr) {
                    // 4. resp.as_array(): [ [stream_name, entries_array] ]
                    auto outer = resp.as_array();
                    for (auto &stream_block : outer) {
