@@ -67,11 +67,15 @@ Each task below pairs a CMake configuration with C++ code. Before each code list
    # 4. Link to threading library for sleep operations
    find_package(Threads REQUIRED)
 
+   target_include_directories(increment
+     PRIVATE
+       ${rediscpp_SOURCE_DIR}/include  # Path to redis-cpp headers
+   )
+
    # 5. Define executable for Task 1
    add_executable(increment increment.cpp)
    target_link_libraries(increment
      PRIVATE
-       rediscpp        # The Redis C++ client
        Threads::Threads  # For std::this_thread::sleep
    )
    ```
