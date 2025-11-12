@@ -1,6 +1,7 @@
 <!---
 {
   "id": "f09fc4fb-82e5-42a9-837f-9e73c2d2c890",
+  "teaches": "Working with Redis in C++ using **redis-cpp**",
   "depends_on": [],
   "author": "Stephan Bökelmann",
   "first_used": "2025-06-23",
